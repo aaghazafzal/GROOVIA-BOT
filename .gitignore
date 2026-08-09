@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual environments
+venv/
+env/
+.env
+
+# Temp downloads
+/tmp/
+C:/temp/
+*.mp3
+*.m4a
+*.webm
+*.part
+
+# Logs
+*.log
+groovia_indexer.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Test files
+find_channel.py
+check_discovery.py
