@@ -215,7 +215,12 @@ def producer(song_queue: queue.Queue, db: Database, state: PipelineState):
         if _shutdown.is_set():
             return
         seen_ids.add(song['yt_id'])
-        song_queue.put(song, timeout=60)
+        while not _shutdown.is_set():
+            try:
+                song_queue.put(song, timeout=10)
+                break
+            except queue.Full:
+                continue
 
     # ── Phase B: Discover new songs ───────────────────────────────────────────
     if _shutdown.is_set():
@@ -250,15 +255,16 @@ def producer(song_queue: queue.Queue, db: Database, state: PipelineState):
         if added:
             seen_ids.add(yt_id)
             # Add to processing queue (block if queue is full — back-pressure)
-            try:
-                song_queue.put(song_meta, timeout=60)
-                new_songs_queued += 1
-
-                if new_songs_queued % 1000 == 0:
-                    logger.info(f"📥 Producer: Queued {new_songs_queued} new songs")
-            except queue.Full:
-                logger.warning("⚠️  Song queue full — producer slowing down")
-                time.sleep(10)
+            while not _shutdown.is_set():
+                try:
+                    song_queue.put(song_meta, timeout=10)
+                    new_songs_queued += 1
+                    if new_songs_queued % 100 == 0:
+                        logger.info(f"📥 Producer: Queued {new_songs_queued} new songs")
+                    break
+                except queue.Full:
+                    logger.warning("⚠️  Song queue full — producer slowing down")
+                    continue
 
         # Check if target reached
         current_stats = db.get_stats()

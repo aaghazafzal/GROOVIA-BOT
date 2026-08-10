@@ -330,6 +330,8 @@ def download_song(yt_id: str) -> Tuple[Optional[str], Optional[dict]]:
 
     for attempt in range(1, MAX_RETRIES + 1):
         logger.info(f"⬇️  [{yt_id}] Download attempt {attempt}/{MAX_RETRIES}")
+        result = None
+        info_dict = None
 
         # ── Attempt 1: JioSaavn ───────────────────────────────────────────────
         if attempt == 1:
