@@ -2,7 +2,7 @@ services:
   - type: web
     name: groovia-music-bot
     env: python
-    buildCommand: "./render-build.sh"
+    buildCommand: "bash render-build.sh"
     startCommand: "python bot.py"
     envVars:
       - key: PORT
