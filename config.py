@@ -1,96 +1,39 @@
 """
-🎵 Groovia Bot - Configuration
-All settings and constants
+🎵 Groovia Music Bot — Config
 """
-
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ============= BOT SETTINGS =============
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8081495139:AAE6egoJ-19wHIlDjwBSw87djH4TSphhwuQ")
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7097905601").split(",") if x.strip().isdigit()]
+# ── Bot ──────────────────────────────────────────────────────────────────────
+BOT_TOKEN   = os.getenv("BOT_TOKEN", "8334511601:AAGpaDzTXbZrGKSlWWNBbg7q3Iq1-xfJ_yU")
+ADMIN_IDS   = [int(x) for x in os.getenv("ADMIN_IDS", "7097905601").split(",") if x.strip().isdigit()]
 
-# ============= API SETTINGS =============
-# New Vercel API - Faster and more reliable
-API_BASE_URL = "https://jiosavan-sigma.vercel.app"
+# ── Channel (existing Groovia channel with 1 lakh+ songs cached) ─────────────
+#  Set this to your channel's numeric ID (e.g. -1001234567890)
+#  or username (e.g. @GrooviaMusic)
+CHANNEL_ID  = os.getenv("CHANNEL_ID", "@song_database")   # ← change if needed
 
-# API Endpoints
-API_ENDPOINTS = {
-    'global_search': '/api/search',
-    'song_search': '/api/search/songs',
-    'album_search': '/api/search/albums',
-    'artist_search': '/api/search/artists',
-    'playlist_search': '/api/search/playlists',
-    'song_details': '/api/songs',
-    'album_details': '/api/albums',
-    'artist_details': '/api/artists',
-    'playlist_details': '/api/playlists',
-    'lyrics': '/api/songs/{id}/lyrics',
-}
+# ── MongoDB ───────────────────────────────────────────────────────────────────
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
+DB_NAME     = os.getenv("DB_NAME", "groovia")
 
-# ============= APP SETTINGS =============
-PORT = int(os.getenv("PORT", 8080))
-SONGS_PER_PAGE = 10
-MAX_RETRIES = 5
-REQUEST_TIMEOUT = 300
+# ── Download ──────────────────────────────────────────────────────────────────
+COOKIES_FILE   = os.path.join(os.path.dirname(__file__), "www.youtube.com_cookies.txt")
+DOWNLOAD_DIR   = os.path.join(os.path.dirname(__file__), "tmp_downloads")
+MAX_FILE_MB    = 48          # Telegram bot limit is 50 MB; keep some headroom
+AUDIO_FORMAT   = "mp3"
+AUDIO_QUALITY  = "128"       # kbps  (medium — fast + good enough)
 
-# ============= QUALITY SETTINGS =============
-QUALITY_OPTIONS = {
-    '12kbps': {'name': '12kbps (Preview)', 'emoji': '🔉'},
-    '48kbps': {'name': '48kbps (Low)', 'emoji': '🔊'},
-    '96kbps': {'name': '96kbps (Medium)', 'emoji': '📶'},
-    '160kbps': {'name': '160kbps (Good)', 'emoji': '🎵'},
-    '320kbps': {'name': '320kbps (Best)', 'emoji': '💎'},
-}
-
-DEFAULT_QUALITY = '160kbps'
-
-# ============= UI MESSAGES =============
-LOADING_MSGS = [
-    "⏳ Loading your music…",
-    "🎵 Fetching the beats…",
-    "🔄 Almost there…",
-    "🎧 Preparing your track…",
-    "✨ Magic happening…"
+# Piped API instances (public, no auth needed)
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://piped-api.garudalinux.org",
+    "https://api.piped.yt",
+    "https://pipedapi.in",
 ]
 
-SEARCH_MSGS = [
-    "🔍 Searching the universe…",
-    "🎵 Finding your vibe…",
-    "🔎 Hunting for tracks…"
-]
-
-LYRICS_MSGS = [
-    "🎼 Detecting song from lyrics…",
-    "🔍 Analyzing your lyrics…",
-    "🎵 Finding the perfect match…"
-]
-
-# ============= EMOJIS =============
-EMOJI = {
-    'song': '🎵',
-    'album': '💿',
-    'artist': '🎤',
-    'playlist': '📋',
-    'favorite': '💖',
-    'history': '📜',
-    'download': '⬇️',
-    'search': '🔍',
-    'settings': '⚙️',
-    'home': '🏠',
-    'close': '❌',
-    'prev': '◀️',
-    'next': '▶️',
-    'play': '▶️',
-    'pause': '⏸️',
-    'trending': '🔥',
-    'new': '🆕',
-}
-
-# ============= DATABASE =============
-# For now using in-memory storage
-# Can be upgraded to SQLite/MongoDB later
-USE_DATABASE = False
-DATABASE_PATH = "groovia_bot.db"
+# ── Misc ──────────────────────────────────────────────────────────────────────
+PORT           = int(os.getenv("PORT", 8080))
+RESULTS_PER_PAGE = 8

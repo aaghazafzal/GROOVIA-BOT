@@ -1,1 +1,1 @@
-# Handlers package
+# Groovia Bot handlers package

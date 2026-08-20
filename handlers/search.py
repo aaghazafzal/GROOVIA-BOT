@@ -1,261 +1,96 @@
 """
-🎵 Groovia Bot - Search Handlers
-Handle all search queries
+🎵 Groovia Bot — Text message handler (search)
 """
-
 import logging
-import random
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
-from services.api_client import api
-from services.database import db
-from utils.keyboards import kb
-from utils.formatters import escape_markdown
-from config import SEARCH_MSGS
+import re
+from ytmusic_search import search_songs, format_duration, get_song_info
+from config import RESULTS_PER_PAGE
+from handlers.fsub import check_fsub
 
 logger = logging.getLogger(__name__)
 
+def _escape(text: str) -> str:
+    """Escape MarkdownV2 special chars."""
+    for ch in r"\_*[]()~`>#+-=|{}.!":
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+def _build_results_keyboard(songs: list, page: int) -> InlineKeyboardMarkup:
+    """Build paginated inline keyboard of song buttons."""
+    start = page * RESULTS_PER_PAGE
+    end   = start + RESULTS_PER_PAGE
+    page_songs = songs[start:end]
+
+    rows = []
+    for i, song in enumerate(page_songs):
+        idx = start + i
+        label = f"🎵 {song['title']} — {song['artist']}"
+        if len(label) > 60:
+            label = label[:57] + "…"
+        rows.append([InlineKeyboardButton(label, callback_data=f"play:{idx}")])
+
+    # Pagination row
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"page:{page-1}"))
+    total_pages = max(1, (len(songs) - 1) // RESULTS_PER_PAGE + 1)
+    nav.append(InlineKeyboardButton(f"📄 {page+1}/{total_pages}", callback_data="noop"))
+    if end < len(songs):
+        nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"page:{page+1}"))
+    if nav:
+        rows.append(nav)
+
+    return InlineKeyboardMarkup(rows)
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle plain text messages - treat as search query
-    """
+    if not await check_fsub(update, context):
+        return
+
     query = update.message.text.strip()
-    user_id = update.effective_user.id
-    
     if len(query) < 2:
-        await update.message.reply_text(
-            "❌ *Query too short\\!*\n\nPlease enter at least 2 characters\\.",
-            parse_mode=ParseMode.MARKDOWN_V2
+        await update.message.reply_text("❌ Too short — please type at least 2 characters.")
+        return
+
+    # Check if query is a YouTube link
+    if "youtu" in query.lower():
+        yt_regex = r"(?:v=|\/)([0-9A-Za-z_-]{11})"
+        m = re.search(yt_regex, query)
+        if m:
+            yt_id = m.group(1)
+            status = await update.message.reply_text("🔗 YouTube link detected. Fetching details...")
+            song = get_song_info(yt_id)
+            if song:
+                from handlers.callbacks import process_play_song
+                await process_play_song(status, song, context, update.message.chat_id)
+                return
+            else:
+                await status.edit_text("❌ Could not get details for this YouTube link.")
+                return
+
+    # Show searching…
+    status = await update.message.reply_text(f"🔍 Searching for *{_escape(query)}*…", parse_mode=ParseMode.MARKDOWN_V2)
+
+    songs = search_songs(query, limit=40)
+
+    if not songs:
+        await status.edit_text(
+            f"❌ No results found for *{_escape(query)}*\\.\n\nTry different keywords\\.",
+            parse_mode=ParseMode.MARKDOWN_V2,
         )
         return
-    
-    # Show loading message
-    loading_msg = random.choice(SEARCH_MSGS)
-    status_message = await update.message.reply_text(
-        escape_markdown(loading_msg),
-        parse_mode=ParseMode.MARKDOWN_V2
+
+    # Store results in user context
+    context.user_data["songs"]   = songs
+    context.user_data["query"]   = query
+
+    kb = _build_results_keyboard(songs, page=0)
+    await status.edit_text(
+        f"🔍 *Results for:* {_escape(query)}\n\n"
+        f"Found *{_escape(str(len(songs)))}* songs\\. Tap one to get it\\:",
+        parse_mode=ParseMode.MARKDOWN_V2,
+        reply_markup=kb,
     )
-    
-    try:
-        # Check for specific search mode (from menu selection)
-        search_mode = context.user_data.get('search_mode')
-        
-        if search_mode and search_mode in ['songs', 'albums', 'artists', 'playlists']:
-            logger.info(f"🔍 Specific Search ({search_mode}): User {user_id}, Query: {query}")
-            await search_by_type(update, context, search_mode)
-            
-            # Clear mode after search (one-shot)
-            context.user_data.pop('search_mode', None)
-            
-            # Clean up the loading message displayed above (since search_by_type sends its own)
-            await status_message.delete()
-            return
-
-        # Perform global search
-        logger.info(f"🔍 Search: User {user_id}, Query: {query}")
-        results = await perform_global_search(user_id, query)
-        
-        if not results:
-            await status_message.edit_text(
-                f"❌ *No results found for:*\n`{escape_markdown(query)}`\n\nTry different keywords\\!",
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=kb.main_menu()
-            )
-            return
-        
-        # Display results
-        await display_search_results(status_message, user_id, query, results)
-        
-    except Exception as e:
-        logger.error(f"❌ Search error: {e}")
-        await status_message.edit_text(
-            "❌ *Search failed\\!*\n\nPlease try again later\\.",
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=kb.main_menu()
-        )
-
-
-async def perform_global_search(user_id: int, query: str):
-    """
-    Perform global search and return best results
-    
-    Returns dict with songs, albums, artists, playlists
-    """
-    try:
-        # Call API
-        data = api.global_search(query)
-        
-        if not data:
-            return None
-        
-        # Extract results
-        songs = data.get('songs', {}).get('results', [])
-        albums = data.get('albums', {}).get('results', [])
-        artists = data.get('artists', {}).get('results', [])
-        playlists = data.get('playlists', {}).get('results', [])
-        
-        # Store in database
-        db.set_search_data(user_id, {
-            'type': 'global',
-            'query': query,
-            'songs': songs,
-            'albums': albums,
-            'artists': artists,
-            'playlists': playlists
-        })
-        
-        return {
-            'songs': songs,
-            'albums': albums,
-            'artists': artists,
-            'playlists': playlists
-        }
-        
-    except Exception as e:
-        logger.error(f"Search API error: {e}")
-        return None
-
-
-async def display_search_results(message, user_id: int, query: str, results: dict):
-    """Display search results with tabs/categories"""
-    
-    songs = results.get('songs', [])
-    albums = results.get('albums', [])
-    artists = results.get('artists', [])
-    playlists = results.get('playlists', [])
-    
-    # Count results
-    song_count = len(songs)
-    album_count = len(albums)
-    artist_count = len(artists)
-    playlist_count = len(playlists)
-    
-    # If we have songs, show them by default
-    if song_count > 0:
-        # Store songs as current results
-        db.set_search_data(user_id, {
-            'type': 'songs',
-            'query': query,
-            'results': songs,
-            'total': song_count
-        })
-        
-        result_text = f"""
-🔍 *Search Results for:* `{escape_markdown(query)}`
-
-📊 *Found:*
-🎵 {song_count} Songs
-💿 {album_count} Albums
-🎤 {artist_count} Artists
-📋 {playlist_count} Playlists
-
-*Showing songs:*
-"""
-        
-        await message.edit_text(
-            result_text,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=kb.song_list(songs, page=0, total=song_count)
-        )
-    else:
-        # No songs, show summary
-        summary = f"""
-🔍 *Search Results for:* `{escape_markdown(query)}`
-
-📊 *Found:*
-💿 {album_count} Albums
-🎤 {artist_count} Artists
-📋 {playlist_count} Playlists
-
-Use the menu to search specific categories\\.
-"""
-        
-        await message.edit_text(
-            summary,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=kb.search_type()
-        )
-
-
-async def search_by_type(update: Update, context: ContextTypes.DEFAULT_TYPE, search_type: str):
-    """
-    Search for specific type (songs, albums, artists, playlists)
-    
-    Args:
-        search_type: One of 'songs', 'albums', 'artists', 'playlists'
-    """
-    query = update.message.text.strip()
-    user_id = update.effective_user.id
-    
-    if len(query) < 2:
-        await update.message.reply_text(
-            "❌ *Query too short\\!*",
-            parse_mode=ParseMode.MARKDOWN_V2
-        )
-        return
-    
-    # Loading message
-    status_message = await update.message.reply_text(
-        f"🔍 Searching for {search_type}\\.\\.\\.",
-        parse_mode=ParseMode.MARKDOWN_V2
-    )
-    
-    try:
-        results = None
-        
-        if search_type == 'songs':
-            results = api.search_songs(query, limit=50)
-        elif search_type == 'albums':
-            results = api.search_albums(query, limit=50)
-        elif search_type == 'artists':
-            results = api.search_artists(query, limit=50)
-        elif search_type == 'playlists':
-            results = api.search_playlists(query, limit=50)
-        
-        if not results:
-            await status_message.edit_text(
-                f"❌ *No {search_type} found for:*\n`{escape_markdown(query)}`",
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=kb.main_menu()
-            )
-            return
-        
-        # Store results
-        db.set_search_data(user_id, {
-            'type': search_type,
-            'query': query,
-            'results': results,
-            'total': len(results)
-        })
-        
-        # Display appropriate keyboard
-        result_text = f"🔍 *{search_type.title()} for:* `{escape_markdown(query)}`\n\n📊 Found {len(results)} results"
-        
-        if search_type == 'songs':
-            keyboard = kb.song_list(results, page=0, total=len(results))
-        elif search_type == 'albums':
-            keyboard = kb.album_list(results, page=0)
-        elif search_type == 'artists':
-            keyboard = kb.artist_list(results, page=0)
-        elif search_type == 'playlists':
-            keyboard = kb.playlist_list(results, page=0)
-        else:
-            keyboard = kb.main_menu()
-        
-        await status_message.edit_text(
-            result_text,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=keyboard
-        )
-        
-        logger.info(f"✅ Search {search_type}: User {user_id}, Query: {query}, Results: {len(results)}")
-        
-    except Exception as e:
-        logger.error(f"Search error ({search_type}): {e}")
-        await status_message.edit_text(
-            f"❌ *Search failed\\!*\n\nTry again later\\.",
-            parse_mode=ParseMode.MARKDOWN_V2
-        )

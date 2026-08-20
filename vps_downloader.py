@@ -187,7 +187,7 @@ def _get_ydl_opts(yt_id: str, proxy: str = None) -> dict:
         'quiet': True,
         'no_warnings': True,
         'noprogress': True,
-        'socket_timeout': 60,
+        'socket_timeout': 30,
         'retries': 2,
         'cookiefile': '/root/groovia/cookies.txt', # Use uploaded cookies
         'extractor_args': {
@@ -223,9 +223,9 @@ def _download_via_ytdlp(yt_id: str) -> Optional[str]:
         return None
         
     random.shuffle(proxies)
-    for i in range(min(5, len(proxies))):
+    for i in range(min(1, len(proxies))):
         proxy = proxies[i]
-        logger.info(f"  yt-dlp trying Proxy ({i+1}/5): {proxy}")
+        logger.info(f"  yt-dlp trying Proxy (1/1): {proxy}")
         try:
             with yt_dlp.YoutubeDL(_get_ydl_opts(yt_id, proxy)) as ydl:
                 ydl.extract_info(url, download=True)

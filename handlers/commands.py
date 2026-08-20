@@ -1,290 +1,97 @@
 """
-🎵 Groovia Bot - Command Handlers
-/start, /help, /menu, /settings etc.
+🎵 Groovia Bot — /start, /help, /stats commands
 """
-
+from datetime import datetime, timedelta
 import logging
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-
-from utils.keyboards import kb
-from utils.formatters import escape_markdown
-from services.database import db
+from cache import db_stats
+from handlers.fsub import check_fsub
 
 logger = logging.getLogger(__name__)
 
+HELP_TEXT = """
+💡 <b>Help</b>
+
+<b>Search:</b> Just type any song name.
+<b>Example:</b> <code>Tere Bin</code> or <code>Arijit Singh best songs</code>
+
+<b>Inline mode:</b> Type <code>@Groovia_bot &lt;song&gt;</code> in any chat.
+
+<b>Tips:</b>
+• Be specific → better results
+• Include artist name for exact match
+• Supports Hindi, Punjabi, English, Urdu songs
+
+<i>Built with ❤️ — Powered by YouTube Music</i>
+"""
+
+def get_greeting():
+    # Calculate IST time (UTC + 5:30)
+    ist_time = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    hour = ist_time.hour
+    if hour < 12:
+        return "Good Morning"
+    elif 12 <= hour < 17:
+        return "Good Afternoon"
+    elif 17 <= hour < 20:
+        return "Good Evening"
+    else:
+        return "Good Night"
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle /start command
-    Displays professional welcome message with Univora branding
-    """
+    # FSub check
+    if not await check_fsub(update, context):
+        return
+
     user = update.effective_user
-    user_id = user.id
-    first_name = escape_markdown(user.first_name)
-    
-    # Initialize user in database (non-blocking if DB is efficient)
-    db.user_stats[user_id] 
-    
-    # Professional, User-Friendly Welcome Message
-    # Note: Escaped characters for MarkdownV2: _ * [ ] ( ) ~ > # + - = | { } . !
-    # Using wide characters to force message width
-    welcome_text = f"""
-╔══════════════════════════╗
-       🎵 *Groovia Music Bot*    
-╚══════════════════════════╝
+    greeting = get_greeting()
+    # Create HTML link for the user's name
+    mention = f"<a href='tg://user?id={user.id}'>{user.first_name}</a>"
 
-*Hey {first_name}* 👋
+    start_text = f"""
+🌅 <b>{greeting}, {mention}!</b>
 
-*Welcome to the Ultimate Music Experience* 🎧
-_Powered by Univora Platform_
+🎵 <b>Welcome to Groovia Music Bot!</b>
 
-Experience high\\-quality music instantly\\! ⚡️
+The fastest music bot — powered by YouTube Music.
 
-🔥 *Want 10x More Features?*
-Try our new Web App for:
-✅ Smooth Lag\\-free Playback
-✅ Visualizer & Equalizer
-✅ 10x Faster Experience
+<b>How to use:</b>
+▸ Just type any song name, artist, or album
+▸ Pick from the results
+▸ Get the audio instantly!
 
-[👉 Click to Open Groovia Web App](https://grooviamodern.vercel.app)
+If the song is already in our cache of <b>1 lakh+ songs</b> you'll get it in seconds.
+Otherwise it will be downloaded fresh just for you.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎵 *Bot Features:*
-• 🔍 *Smart Search* \\- Songs, Albums, Artists
-• 📥 *Fast Download* \\- Multiple qualities
-• 📜 *Lyrics* \\- Sing along
-
-👤 *Owner:* [Rolex Sir](tg://user?id={user_id})
-🏢 *Platform:* [Univora](https://univora.site)
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-👇 *Start exploring below:*
+<i>Start searching ↓</i>
 """
-    
-    # Send message with new keyboard
-    await update.message.reply_text(
-        welcome_text,
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=kb.start_keyboard(),
-        disable_web_page_preview=True 
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔎 Search a Song", switch_inline_query_current_chat=""),
+    ]])
+    await update.message.reply_html(
+        start_text,
+        reply_markup=kb,
     )
-    
-    logger.info(f"✅ /start: User {user_id}")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /help command"""
-    help_text = """
-📚 *Help Guide*
-
-*🔍 Search:*
-Send any song name to search instantly\\!
-Example: `Tum Hi Ho`
-
-*📋 Menu Options:*
-• *Songs* \\- Search only songs
-• *Albums* \\- Browse albums
-• *Artists* \\- Find artists
-• *Playlists* \\- Discover playlists
-• *Favorites* \\- Your saved songs
-• *History* \\- Recently played
-
-*⬇️ Download:*
-Tap any song to see options\\. Choose your preferred quality\\!
-
-*💡 Quality Options:*
-• 12kbps \\- Preview
-• 48kbps \\- Low \\(fast\\)
-• 96kbps \\- Medium
-• 160kbps \\- Good ⭐ \\(recommended\\)
-• 320kbps \\- Best \\(high quality\\)
-
-*📝 Commands:*
-/start \\- Start the bot
-/menu \\- Open main menu
-/help \\- Show this help
-/settings \\- Bot settings
-
-*❓ Need more help?*
-Contact: @YourSupportBot
-
-━━━━━━━━━━━━━━━━━━━━━
-"""
-    
-    await update.message.reply_text(
-        help_text,
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=kb.main_menu()
-    )
-
-
-async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /menu command"""
-    menu_text = """
-╔═══════════════════╗
-   🎵 *Main Menu*
-╚═══════════════════╝
-
-Choose an option below:
-"""
-    
-    await update.message.reply_text(
-        menu_text,
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=kb.main_menu()
-    )
-
-
-async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /settings command"""
-    user_id = update.effective_user.id
-    settings = db.get_all_settings(user_id)
-    quality = settings.get('quality', '160kbps')
-    
-    settings_text = f"""
-⚙️ *Settings*
-
-*Current Configuration:*
-📶 Quality: `{escape_markdown(quality)}`
-🌐 Language: `{escape_markdown(settings.get('language', 'hindi'))}`
-🔔 Notifications: `{escape_markdown('On' if settings.get('notifications') else 'Off')}`
-
-Tap a button below to change settings\\.
-
-━━━━━━━━━━━━━━━━━━━━━
-"""
-    
-    await update.message.reply_text(
-        settings_text,
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=kb.settings(quality)
-    )
-
-
-async def cmd_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /favorites command"""
-    user_id = update.effective_user.id
-    favorites = db.get_favorites(user_id)
-    
-    if not favorites:
-        text = """
-💔 *No favorites yet\\!*
-
-Search for songs and tap 💖 to add them to your favorites\\.
-
-*Quick tip:* Your favorites are saved and you can access them anytime\\!
-
-━━━━━━━━━━━━━━━━━━━━━
-"""
-        await update.message.reply_text(
-            text,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=kb.main_menu()
-        )
+    if not await check_fsub(update, context):
         return
-    
-    # Store favorites in search data so we can display them
-    db.set_search_data(user_id, {
-        'type': 'favorites',
-        'results': favorites,
-        'total': len(favorites)
-    })
-    
-    text = f"""
-💖 *Your Favorites*
-
-📊 {len(favorites)} songs saved
-
-Choose a song to play or download:
-
-━━━━━━━━━━━━━━━━━━━━━
-"""
-    
-    await update.message.reply_text(
-        text,
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=kb.song_list(favorites, page=0, total=len(favorites))
-    )
-
-
-async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /history command"""
-    user_id = update.effective_user.id
-    history = db.get_history(user_id)
-    
-    if not history:
-        text = """
-📜 *No history yet\\!*
-
-Start exploring music and your listening history will appear here\\.
-
-*Quick tip:* History helps you rediscover songs you loved\\!
-
-━━━━━━━━━━━━━━━━━━━━━
-"""
-        await update.message.reply_text(
-            text,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=kb.main_menu()
-        )
-        return
-    
-    # Store history in search data
-    db.set_search_data(user_id, {
-        'type': 'history',
-        'results': history,
-        'total': len(history)
-    })
-    
-    text = f"""
-📜 *Your History*
-
-📊 {len(history)} songs
-
-Recently played songs:
-
-━━━━━━━━━━━━━━━━━━━━━
-"""
-    
-    await update.message.reply_text(
-        text,
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=kb.song_list(history, page=0, total=len(history))
-    )
+    await update.message.reply_html(HELP_TEXT)
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show user statistics"""
-    user_id = update.effective_user.id
-    user_stats = db.get_user_stats(user_id)
-    global_stats = db.get_global_stats()
-    
-    stats_text = f"""
-╔══════════════════════════╗
-       📊 *Your Statistics*       
-╚══════════════════════════╝
+    try:
+        stats = await db_stats()
+        text = (
+            f"📊 *Groovia Stats*\n\n"
+            f"🎵 Total in DB: `{stats['total']:,}`\n"
+            f"⚡ Cached \\(file\\_id\\): `{stats['cached']:,}`\n\n"
+            f"_Every cached song = instant delivery, no download needed\\!_"
+        )
+    except Exception as e:
+        text = f"📊 Stats unavailable: {e}"
 
-🔍 *Searches:* {user_stats['searches']}
-⬇️ *Downloads:* {user_stats['downloads']}
-💖 *Favorites:* {user_stats['favorites_count']}
-📜 *History:* {user_stats['history_count']}
-
-📅 *Member since:* {escape_markdown(user_stats['first_seen'][:10])}
-⏰ *Last active:* {escape_markdown(user_stats['last_active'][:10])}
-
-━━━━━━━━━━━━━━━━━━━━━
-🌍 *Global Stats*
-👥 Total Users: {global_stats['total_users']}
-📥 Downloads: {global_stats['total_downloads']}
-🔍 Searches: {global_stats['total_searches']}
-
-━━━━━━━━━━━━━━━━━━━━━
-"""
-    
-    await update.message.reply_text(
-        stats_text,
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=kb.main_menu()
-    )
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)

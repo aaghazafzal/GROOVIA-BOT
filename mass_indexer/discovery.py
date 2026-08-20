@@ -815,6 +815,9 @@ class SongDiscovery:
                 logger.info("PHASE 5: Editorial Playlists")
                 yield from self._phase_playlists()
 
+            logger.info("PHASE 6: Infinite Radio (Graph Traversal)")
+            yield from self._phase_infinite_radio(cycle)
+
             logger.info(f"Cycle {cycle} done. Total unique discovered: {len(self._seen):,}")
 
             # Small rest between cycles
@@ -983,6 +986,38 @@ class SongDiscovery:
                 time.sleep(DISCOVERY_DELAY * 3)
             except Exception as e:
                 logger.warning(f"  Playlist failed: {e}")
+
+    # ── PHASE 6: INFINITE RADIO ───────────────────────────────────────────────
+
+    def _phase_infinite_radio(self, cycle: int = 1) -> Generator:
+        if not self.ytm:
+            return
+        
+        seen_list = list(self._seen)
+        if not seen_list:
+            return
+            
+        random.shuffle(seen_list)
+        # Take up to 200 random seen songs to find related tracks
+        sample = seen_list[:200]
+        
+        for i, yt_id in enumerate(sample, 1):
+            try:
+                data = self.ytm.get_watch_playlist(videoId=yt_id, limit=50)
+                items = data.get('tracks', [])
+                count = 0
+                for item in items:
+                    song = self._parse_item(item, priority=3)
+                    if song and self._is_new(song['yt_id']):
+                        yield song
+                        count += 1
+                
+                if i % 10 == 0:
+                    logger.info(f"  Radio: {i}/{len(sample)} | Unique: {len(self._seen):,}")
+                time.sleep(DISCOVERY_DELAY + random.uniform(0, 1))
+            except Exception as e:
+                logger.warning(f"  Radio failed ({yt_id}): {e}")
+                time.sleep(2)
 
     # ── HELPERS ───────────────────────────────────────────────────────────────
 
