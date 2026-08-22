@@ -66,7 +66,37 @@ async def _download_ytdlp(yt_id: str) -> str | None:
             if res2.returncode == 0 and os.path.exists(out_path):
                 logger.info(f"  ✅ yt-dlp done [{yt_id}] (Attempt 2)")
                 return out_path
-            logger.warning(f"  yt-dlp attempt 2 failed [{yt_id}]: {res2.stderr.strip()[-200:]}")
+            logger.warning(f"  yt-dlp attempt 2 failed [{yt_id}]: {res2.stderr.strip()[-100:]}")
+
+        # Try 3: iOS and TV clients (bypasses some strict datacenter blocks)
+        logger.info(f"  🔄 Retrying with iOS/TV clients for [{yt_id}]...")
+        cmd3 = YTDLP_BIN + [
+            "--no-playlist", "--extract-audio", "--audio-format", "mp3", "--audio-quality", "5",
+            f"--max-filesize={MAX_FILE_MB}m", "--socket-timeout", "30", "--retries", "3",
+            "--output", out_tmpl, "--no-warnings", "--quiet",
+            "--extractor-args", "youtube:player_client=ios,tv,web_embedded",
+            "-f", "18/93/92/91/bestaudio", url
+        ]
+        res3 = await loop.run_in_executor(None, lambda: run_cmd(cmd3))
+        if res3.returncode == 0 and os.path.exists(out_path):
+            logger.info(f"  ✅ yt-dlp done [{yt_id}] (Attempt 3)")
+            return out_path
+        logger.warning(f"  yt-dlp attempt 3 failed [{yt_id}]: {res3.stderr.strip()[-100:]}")
+        
+        # Try 4: MWEB client
+        logger.info(f"  🔄 Retrying with mweb client for [{yt_id}]...")
+        cmd4 = YTDLP_BIN + [
+            "--no-playlist", "--extract-audio", "--audio-format", "mp3", "--audio-quality", "5",
+            f"--max-filesize={MAX_FILE_MB}m", "--socket-timeout", "30", "--retries", "3",
+            "--output", out_tmpl, "--no-warnings", "--quiet",
+            "--extractor-args", "youtube:player_client=mweb,default",
+            "-f", "18/93/92/91/bestaudio", url
+        ]
+        res4 = await loop.run_in_executor(None, lambda: run_cmd(cmd4))
+        if res4.returncode == 0 and os.path.exists(out_path):
+            logger.info(f"  ✅ yt-dlp done [{yt_id}] (Attempt 4)")
+            return out_path
+        logger.warning(f"  yt-dlp attempt 4 failed [{yt_id}]: {res4.stderr.strip()[-100:]}")
 
         return None
     except subprocess.TimeoutExpired:
