@@ -40,6 +40,11 @@ async def post_init(app: Application):
 
 
 def main():
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     app = (
         Application.builder()
         .token(BOT_TOKEN)
