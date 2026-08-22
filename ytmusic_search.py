@@ -88,26 +88,36 @@ def get_song_info(yt_id: str) -> dict | None:
     except Exception as e:
         logger.warning(f"YTMusic get_song_info error, falling back to yt-dlp: {e}")
 
-    # Fallback to yt-dlp
+    # Fallback to YouTube oEmbed API (Fastest, zero-auth required)
+    import requests
+    try:
+        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={yt_id}&format=json"
+        res = requests.get(oembed_url, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            return {
+                "yt_id": yt_id,
+                "title": data.get("title", "Unknown"),
+                "artist": data.get("author_name", "Unknown Artist"),
+                "album": "",
+                "duration": 0, # oEmbed doesn't provide duration, default to 0
+                "thumbnail": data.get("thumbnail_url", ""),
+            }
+    except Exception as e:
+        logger.error(f"oEmbed fallback exception: {e}")
+
+    # Final Fallback to yt-dlp (without cookies to bypass residential cookie blocks on datacenters)
     import sys
     import subprocess
     import json
     
     YTDLP_BIN = [sys.executable, "-m", "yt_dlp"]
-    cmd_base = YTDLP_BIN + [
+    cmd = YTDLP_BIN + [
         "--dump-json", 
         "--no-warnings", 
         "--extractor-args", "youtube:player_client=android",
         f"https://youtu.be/{yt_id}"
     ]
-    
-    cmd = cmd_base.copy()
-    
-    # Optional: pass cookies if available
-    from config import COOKIES_FILE
-    import os
-    if os.path.exists(COOKIES_FILE):
-        cmd += ["--cookies", COOKIES_FILE]
         
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
@@ -122,23 +132,9 @@ def get_song_info(yt_id: str) -> dict | None:
                 "thumbnail": data.get("thumbnail", ""),
             }
         else:
-            logger.error(f"yt-dlp fallback failed: {res.stderr[-200:]}")
-            # Try once more without cookies if it failed with cookies
-            if os.path.exists(COOKIES_FILE):
-                cmd_no_cookies = cmd_base.copy()
-                res2 = subprocess.run(cmd_no_cookies, capture_output=True, text=True, timeout=20)
-                if res2.returncode == 0:
-                    data = json.loads(res2.stdout)
-                    return {
-                        "yt_id": yt_id,
-                        "title": data.get("title", "Unknown"),
-                        "artist": data.get("uploader", "Unknown Artist"),
-                        "album": "",
-                        "duration": data.get("duration", 0),
-                        "thumbnail": data.get("thumbnail", ""),
-                    }
+            logger.error(f"yt-dlp final fallback failed: {res.stderr[-200:]}")
     except Exception as e:
-        logger.error(f"yt-dlp fallback exception: {e}")
+        logger.error(f"yt-dlp final fallback exception: {e}")
 
     return None
 
