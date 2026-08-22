@@ -94,7 +94,14 @@ def get_song_info(yt_id: str) -> dict | None:
     import json
     
     YTDLP_BIN = [sys.executable, "-m", "yt_dlp"]
-    cmd = YTDLP_BIN + ["--dump-json", "--no-warnings", f"https://youtu.be/{yt_id}"]
+    cmd_base = YTDLP_BIN + [
+        "--dump-json", 
+        "--no-warnings", 
+        "--extractor-args", "youtube:player_client=android",
+        f"https://youtu.be/{yt_id}"
+    ]
+    
+    cmd = cmd_base.copy()
     
     # Optional: pass cookies if available
     from config import COOKIES_FILE
@@ -118,7 +125,7 @@ def get_song_info(yt_id: str) -> dict | None:
             logger.error(f"yt-dlp fallback failed: {res.stderr[-200:]}")
             # Try once more without cookies if it failed with cookies
             if os.path.exists(COOKIES_FILE):
-                cmd_no_cookies = YTDLP_BIN + ["--dump-json", "--no-warnings", f"https://youtu.be/{yt_id}"]
+                cmd_no_cookies = cmd_base.copy()
                 res2 = subprocess.run(cmd_no_cookies, capture_output=True, text=True, timeout=20)
                 if res2.returncode == 0:
                     data = json.loads(res2.stdout)
