@@ -34,7 +34,6 @@ async def _download_ytdlp(yt_id: str) -> str | None:
         "--output", out_tmpl,
         "--no-warnings",
         "--quiet",
-        "--extractor-args", "youtube:player_client=android",
         "-f", "18/93/92/91/bestaudio",
     ]
 
