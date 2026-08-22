@@ -97,6 +97,42 @@ async def _download_ytdlp(yt_id: str) -> str | None:
             logger.info(f"  ✅ yt-dlp done [{yt_id}] (Attempt 4)")
             return out_path
         logger.warning(f"  yt-dlp attempt 4 failed [{yt_id}]: {res4.stderr.strip()[-100:]}")
+        
+        # Try 5 (Ultimate Failsafe): Silent Piped Stream + FFmpeg conversion
+        logger.info(f"  🔥 Retrying with Silent Ultimate Bypass (Stream+FFmpeg) for [{yt_id}]...")
+        try:
+            import aiohttp
+            from config import PIPED_INSTANCES
+            
+            stream_url = None
+            async with aiohttp.ClientSession() as session:
+                for inst in PIPED_INSTANCES:
+                    try:
+                        async with session.get(f"{inst}/streams/{yt_id}", timeout=10) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                streams = data.get("audioStreams", [])
+                                if streams:
+                                    streams.sort(key=lambda x: x.get("bitrate", 0), reverse=True)
+                                    stream_url = streams[0]["url"]
+                                    break
+                    except Exception:
+                        continue
+            
+            if stream_url:
+                ffmpeg_cmd = [
+                    "ffmpeg", "-y", "-i", stream_url, 
+                    "-vn", "-ar", "44100", "-ac", "2", "-b:a", "128k", "-f", "mp3", 
+                    out_path
+                ]
+                res5 = await loop.run_in_executor(None, lambda: subprocess.run(ffmpeg_cmd, capture_output=True, timeout=120))
+                if res5.returncode == 0 and os.path.exists(out_path):
+                    logger.info(f"  ✅ Ultimate Bypass done [{yt_id}]")
+                    return out_path
+                else:
+                    logger.warning(f"  Ultimate Bypass ffmpeg failed: {res5.stderr.decode(errors='ignore')[-100:]}")
+        except Exception as e:
+            logger.error(f"  Ultimate Bypass failed [{yt_id}]: {e}")
 
         return None
     except subprocess.TimeoutExpired:
