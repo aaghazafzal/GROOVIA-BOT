@@ -14,17 +14,8 @@ logger = logging.getLogger(__name__)
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# yt-dlp binary path (use venv's copy)
-_VENV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "venv")
-if sys.platform == "win32":
-    YTDLP_BIN = os.path.join(_VENV_DIR, "Scripts", "yt-dlp.exe")
-    if not os.path.exists(YTDLP_BIN):
-        YTDLP_BIN = os.path.join(_VENV_DIR, "Scripts", "yt-dlp")
-else:
-    YTDLP_BIN = os.path.join(_VENV_DIR, "bin", "yt-dlp")
-
-if not os.path.exists(YTDLP_BIN):
-    YTDLP_BIN = "yt-dlp"
+import sys
+YTDLP_BIN = [sys.executable, "-m", "yt_dlp"]
 
 async def _download_ytdlp(yt_id: str) -> str | None:
     """yt-dlp with cookies, runs in executor."""
@@ -32,8 +23,7 @@ async def _download_ytdlp(yt_id: str) -> str | None:
     out_tmpl = os.path.join(DOWNLOAD_DIR, f"{yt_id}.%(ext)s")
     out_path  = os.path.join(DOWNLOAD_DIR, f"{yt_id}.mp3")
 
-    cmd = [
-        YTDLP_BIN,
+    cmd_base = YTDLP_BIN + [
         "--no-playlist",
         "--extract-audio",
         "--audio-format", "mp3",
@@ -45,28 +35,40 @@ async def _download_ytdlp(yt_id: str) -> str | None:
         "--no-warnings",
         "--quiet",
         "--extractor-args", "youtube:player_client=android",
-        # Format 18 is https-only (no bot check), m3u8 formats as fallback
         "-f", "18/93/92/91/bestaudio",
     ]
 
+    # Try 1: With cookies (if available)
+    cmd1 = cmd_base.copy()
     if os.path.exists(COOKIES_FILE):
-        cmd += ["--cookies", COOKIES_FILE]
-
-    cmd.append(url)
+        cmd1 += ["--cookies", COOKIES_FILE]
+    cmd1.append(url)
 
     loop = asyncio.get_event_loop()
+    
+    def run_cmd(c):
+        return subprocess.run(c, capture_output=True, text=True, timeout=120)
+
     try:
-        result = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-        )
-        if result.returncode == 0 and os.path.exists(out_path):
-            logger.info(f"  ✅ yt-dlp done [{yt_id}]")
+        res1 = await loop.run_in_executor(None, lambda: run_cmd(cmd1))
+        if res1.returncode == 0 and os.path.exists(out_path):
+            logger.info(f"  ✅ yt-dlp done [{yt_id}] (Attempt 1)")
             return out_path
-        else:
-            stderr = result.stderr.strip()[-300:] if result.stderr else "(no error)"
-            logger.warning(f"  yt-dlp failed [{yt_id}]: {stderr}")
-            return None
+        
+        logger.warning(f"  yt-dlp attempt 1 failed [{yt_id}]: {res1.stderr.strip()[-200:]}")
+        
+        # Try 2: Without cookies (sometimes datacenter IPs fail with residential cookies)
+        if os.path.exists(COOKIES_FILE):
+            logger.info(f"  🔄 Retrying without cookies for [{yt_id}]...")
+            cmd2 = cmd_base.copy()
+            cmd2.append(url)
+            res2 = await loop.run_in_executor(None, lambda: run_cmd(cmd2))
+            if res2.returncode == 0 and os.path.exists(out_path):
+                logger.info(f"  ✅ yt-dlp done [{yt_id}] (Attempt 2)")
+                return out_path
+            logger.warning(f"  yt-dlp attempt 2 failed [{yt_id}]: {res2.stderr.strip()[-200:]}")
+
+        return None
     except subprocess.TimeoutExpired:
         logger.error(f"  yt-dlp timeout [{yt_id}]")
         return None

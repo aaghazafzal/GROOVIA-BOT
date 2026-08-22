@@ -10,14 +10,12 @@ load_dotenv()
 BOT_TOKEN   = os.getenv("BOT_TOKEN", "8334511601:AAGpaDzTXbZrGKSlWWNBbg7q3Iq1-xfJ_yU")
 ADMIN_IDS   = [int(x) for x in os.getenv("ADMIN_IDS", "7097905601").split(",") if x.strip().isdigit()]
 
-# ── Channel (existing Groovia channel with 1 lakh+ songs cached) ─────────────
-#  Set this to your channel's numeric ID (e.g. -1001234567890)
-#  or username (e.g. @GrooviaMusic)
-CHANNEL_ID  = os.getenv("CHANNEL_ID", "@song_database")   # ← change if needed
+# 🎶 Channel (existing Groovia channel with 1 lakh+ songs cached)
+CHANNEL_ID  = os.getenv("CHANNEL_ID", "-1004422628064")
 
-# ── MongoDB ───────────────────────────────────────────────────────────────────
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
-DB_NAME     = os.getenv("DB_NAME", "groovia")
+# 💾 MongoDB
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://grooviabot1:aaghaz9431@groovia-bot1.9zgtyxp.mongodb.net/?appName=groovia-bot1")
+DB_NAME     = os.getenv("DB_NAME", "groovia_db")
 
 # ── Download ──────────────────────────────────────────────────────────────────
 COOKIES_FILE   = os.path.join(os.path.dirname(__file__), "www.youtube.com_cookies.txt")
